@@ -87,10 +87,11 @@ spec:
 
           startupProbe:
             httpGet:
-              path:
+              path: /
               port: 8080
-            failureThreshold: 30
+            failureThreshold: 60
             periodSeconds: 10
+            initialDelaySeconds: 30
 
           livenessProbe:
             httpGet:
