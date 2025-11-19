@@ -79,11 +79,11 @@ spec:
                   key: CLOUDINARY_API_SECRET
           resources:
             requests:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
-              cpu: "100m"
+              memory: "512Mi"
+              cpu: "200m"
 
           startupProbe:
             httpGet:
