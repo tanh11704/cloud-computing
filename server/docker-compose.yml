@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 12345
+      MYSQL_DATABASE: event_management
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+
+  backend:
+    build: .
+    container_name: event-management
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      - db
+
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/event_management?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=12345
+
+      - APP_COOKIE_SECURE=true
+      - JWT_SECRET=daf66e01593f61a19x725cf433aae03a005812b31234e92754bcc8dee755dbb
+
+volumes:
+  mysql-data:
+  redis-data:
