@@ -102,11 +102,11 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /api/v1/units
+              path: /actuator/health
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 10
-            timeoutSeconds: 10
+            timeoutSeconds: 5
             successThreshold: 1
             failureThreshold: 3
 
