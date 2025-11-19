@@ -39,7 +39,7 @@ steps:
     args:
       - "-c"
       - |
-        sed -i "s/event-management-478313/$PROJECT_ID/g" k8s/*.yaml
+        sed -i "s/\[PROJECT_ID\]/$PROJECT_ID/g" k8s/*.yaml
 
   # --- BƯỚC 5: DEPLOY LÊN GKE ---
   - name: "gcr.io/cloud-builders/kubectl"
