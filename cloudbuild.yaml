@@ -1,0 +1,61 @@
+steps:
+  # --- BƯỚC 1: BUILD BACKEND ---
+  - name: "gcr.io/cloud-builders/docker"
+    id: "Build Backend"
+    dir: "server"
+    args:
+      - "build"
+      - "-t"
+      - "asia-southeast1-docker.pkg.dev/$PROJECT_ID/event-management-docker-repo/be-event-management:latest"
+      - "."
+    waitFor: ["-"]
+
+  # --- BƯỚC 2: BUILD FRONTEND ---
+  - name: "gcr.io/cloud-builders/docker"
+    id: "Build Frontend"
+    dir: "event-management-client"
+    args:
+      - "build"
+      - "-t"
+      - "asia-southeast1-docker.pkg.dev/$PROJECT_ID/event-management-docker-repo/fe-event-management:latest"
+      - "."
+    waitFor: ["-"]
+
+  # --- BƯỚC 3: PUSH IMAGES ---
+  - name: "gcr.io/cloud-builders/docker"
+    id: "Push Images"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        docker push asia-southeast1-docker.pkg.dev/$PROJECT_ID/event-management-docker-repo/be-event-management:latest
+        docker push asia-southeast1-docker.pkg.dev/$PROJECT_ID/event-management-docker-repo/fe-event-management:latest
+    waitFor: ["Build Backend", "Build Frontend"]
+
+  # --- BƯỚC 4: CHUẨN BỊ MANIFESTS (Dynamic Configuration) ---
+  - name: "ubuntu"
+    id: "Prepare Manifests"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        sed -i "s/event-management-478313/$PROJECT_ID/g" k8s/*.yaml
+
+  # --- BƯỚC 5: DEPLOY LÊN GKE ---
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: "Deploy to GKE"
+    args:
+      - "apply"
+      - "-f"
+      - "k8s/"
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=$_REGION"
+      - "CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER"
+    waitFor: ["Push Images", "Prepare Manifests"]
+
+substitutions:
+  _REGION: "asia-southeast1"
+  _CLUSTER: "main-cluster"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

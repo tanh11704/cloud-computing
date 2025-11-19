@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  namespace: event-management-app
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    # Nếu bạn có Static IP đã mua trên Google Cloud, bỏ comment dòng dưới
+    # kubernetes.io/ingress.global-static-ip-name: "ten-static-ip-cua-ban"
+spec:
+  rules:
+    - http:
+        paths:
+          # Ưu tiên 1: Tất cả đường dẫn bắt đầu bằng /api đẩy về Backend
+          - path: /api/*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: backend-svc # Phải khớp tên trong file 02-backend.yaml
+                port:
+                  number: 8080
+          # Ưu tiên 2: Các đường dẫn còn lại đẩy về Frontend
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend-svc # Phải khớp tên trong file 03-frontend.yaml
+                port:
+                  number: 80
