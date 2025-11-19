@@ -102,10 +102,11 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/v1/units
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
 
 ---
 apiVersion: v1
