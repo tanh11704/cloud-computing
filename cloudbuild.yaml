@@ -49,12 +49,12 @@ steps:
       - "-f"
       - "k8s/"
     env:
-      - "CLOUDSDK_COMPUTE_REGION=$_REGION"
+      - "CLOUDSDK_COMPUTE_ZONE=$_ZONE"
       - "CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER"
     waitFor: ["Push Images", "Prepare Manifests"]
 
 substitutions:
-  _REGION: "asia-southeast1"
+  _ZONE: "asia-south1-a"
   _CLUSTER: "main-cluster"
 
 options:
