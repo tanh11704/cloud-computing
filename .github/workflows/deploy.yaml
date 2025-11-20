@@ -62,8 +62,23 @@ jobs:
           APP_FRONTEND_URL: "${{ secrets.APP_FRONTEND_URL }}"
           GCP_PROJECT_ID: "${{ secrets.GCP_PROJECT_ID }}"
         run: |-
-          envsubst < k8s/01-secrets.yaml > k8s/01-secrets-rendered.yaml
+          # Convert GCP_PROJECT_ID to lowercase just in case
+          export GCP_PROJECT_ID=$(echo "${{ secrets.GCP_PROJECT_ID }}" | tr '[:upper:]' '[:lower:]')
 
+          # Export other variables explicitly for envsubst
+          export DB_URL="${{ secrets.DB_URL }}"
+          export DB_USERNAME="${{ secrets.DB_USERNAME }}"
+          export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          export JWT_SECRET="${{ secrets.JWT_SECRET }}"
+          export MAIL_USERNAME="${{ secrets.MAIL_USERNAME }}"
+          export MAIL_APP_PASSWORD="${{ secrets.MAIL_APP_PASSWORD }}"
+          export CLOUDINARY_CLOUD_NAME="${{ secrets.CLOUDINARY_CLOUD_NAME }}"
+          export CLOUDINARY_API_KEY="${{ secrets.CLOUDINARY_API_KEY }}"
+          export CLOUDINARY_API_SECRET="${{ secrets.CLOUDINARY_API_SECRET }}"
+          export IMAGE_TAG="${{ github.sha }}"
+          export APP_FRONTEND_URL="${{ secrets.APP_FRONTEND_URL }}"
+
+          envsubst < k8s/01-secrets.yaml > k8s/01-secrets-rendered.yaml
           envsubst < k8s/02-backend.yaml > k8s/02-backend-rendered.yaml
 
       - name: Deploy
