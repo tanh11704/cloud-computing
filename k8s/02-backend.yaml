@@ -23,7 +23,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: backend-container
-          image: asia-southeast1-docker.pkg.dev/event-management-478313/event-management-docker-repo/be-event-management:${IMAGE_TAG}
+          image: asia-southeast1-docker.pkg.dev/event-management-478313/event-management-docker-repo/be-event-management:latest
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 1001
