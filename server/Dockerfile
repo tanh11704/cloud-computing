@@ -2,9 +2,10 @@ FROM maven:3.9.6-eclipse-temurin-17-alpine AS builder
 WORKDIR /app
 
 COPY pom.xml .
-RUN mvn dependency:go-offline
+# RUN mvn dependency:go-offline (Tạm bỏ qua để tránh lỗi mạng 502 ngẫu nhiên)
 
 COPY src ./src
+# Build và tải dependency cùng lúc (Maven sẽ tự retry tốt hơn)
 RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:17-jre-alpine
