@@ -49,18 +49,18 @@ jobs:
 
       - name: Render Deployment YAMLs
         env:
-          DB_URL: ${{ secrets.DB_URL }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
-          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          IMAGE_TAG: ${{ github.sha }}
-          APP_FRONTEND_URL: ${{ secrets.APP_FRONTEND_URL }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          DB_URL: "${{ secrets.DB_URL }}"
+          DB_USERNAME: "${{ secrets.DB_USERNAME }}"
+          DB_PASSWORD: "${{ secrets.DB_PASSWORD }}"
+          JWT_SECRET: "${{ secrets.JWT_SECRET }}"
+          MAIL_USERNAME: "${{ secrets.MAIL_USERNAME }}"
+          MAIL_APP_PASSWORD: "${{ secrets.MAIL_APP_PASSWORD }}"
+          CLOUDINARY_CLOUD_NAME: "${{ secrets.CLOUDINARY_CLOUD_NAME }}"
+          CLOUDINARY_API_KEY: "${{ secrets.CLOUDINARY_API_KEY }}"
+          CLOUDINARY_API_SECRET: "${{ secrets.CLOUDINARY_API_SECRET }}"
+          IMAGE_TAG: "${{ github.sha }}"
+          APP_FRONTEND_URL: "${{ secrets.APP_FRONTEND_URL }}"
+          GCP_PROJECT_ID: "${{ secrets.GCP_PROJECT_ID }}"
         run: |-
           envsubst < k8s/01-secrets.yaml > k8s/01-secrets-rendered.yaml
 
