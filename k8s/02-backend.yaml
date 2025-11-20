@@ -8,6 +8,8 @@ metadata:
     tier: backend
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: event-management
@@ -87,10 +89,10 @@ spec:
           resources:
             requests:
               memory: "256Mi"
-              cpu: "250m"
+              cpu: "100m"
             limits:
-              memory: "768Mi"
-              cpu: "1000m"
+              memory: "512Mi"
+              cpu: "500m"
 
           startupProbe:
             httpGet:
@@ -98,7 +100,7 @@ spec:
               port: 8080
             failureThreshold: 60
             periodSeconds: 10
-            initialDelaySeconds: 30
+            initialDelaySeconds: 120
             timeoutSeconds: 10
 
           livenessProbe:
