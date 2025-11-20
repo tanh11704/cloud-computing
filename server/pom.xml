@@ -12,7 +12,7 @@
 	<groupId>API_BoPhieu</groupId>
 	<artifactId>API_BoPhieu</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<packaging>war</packaging>
+	<packaging>jar</packaging>
 	<name>API_BoPhieu</name>
 	<description>Demo project for Spring Boot</description>
 	<url />
@@ -151,7 +151,17 @@
             <artifactId>cloudinary-http44</artifactId>
             <version>1.39.0</version>
         </dependency>
-	</dependencies>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+    </dependencies>
 
 	<build>
         <plugins>

@@ -7,7 +7,7 @@ metadata:
     app: event-management
     tier: backend
 spec:
-  replicas: 1 # Tạm thời giảm xuống 1 để phù hợp với cluster capacity
+  replicas: 1
   selector:
     matchLabels:
       app: event-management
@@ -18,18 +18,25 @@ spec:
         app: event-management
         tier: backend
     spec:
+      terminationGracePeriodSeconds: 60
       containers:
         - name: backend-container
-          image: asia-southeast1-docker.pkg.dev/[PROJECT_ID]/event-management-docker-repo/be-event-management:latest
-          imagePullPolicy: Always
+          image: asia-southeast1-docker.pkg.dev/${GCP_PROJECT_ID}/event-management-docker-repo/be-event-management:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 8080
 
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: "prod"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx384m"
             - name: APP_FRONTEND_URL
-              value: "http://localhost"
+              value: "${APP_FRONTEND_URL}"
             - name: CORS_ALLOWED_ORIGINS
               value: "*"
             - name: DB_PASSWORD
@@ -80,32 +87,35 @@ spec:
           resources:
             requests:
               memory: "256Mi"
-              cpu: "50m"
+              cpu: "250m"
             limits:
-              memory: "512Mi"
-              cpu: "200m"
+              memory: "768Mi"
+              cpu: "1000m"
 
           startupProbe:
             httpGet:
-              path: /
+              path: /actuator/health
               port: 8080
             failureThreshold: 60
             periodSeconds: 10
             initialDelaySeconds: 30
+            timeoutSeconds: 10
 
           livenessProbe:
             httpGet:
-              path: /
+              path: /actuator/health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 180
             periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
 
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
             initialDelaySeconds: 60
-            periodSeconds: 10
+            periodSeconds: 5
             timeoutSeconds: 5
             successThreshold: 1
             failureThreshold: 3

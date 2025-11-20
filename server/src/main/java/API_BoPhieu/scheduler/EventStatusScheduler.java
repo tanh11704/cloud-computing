@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import API_BoPhieu.repository.EventRepository;
 import jakarta.transaction.Transactional;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 
 @Component
 public class EventStatusScheduler {
@@ -20,6 +21,7 @@ public class EventStatusScheduler {
     private EventRepository eventRepository;
 
     @Scheduled(cron = "0 * * * * *")
+    @SchedulerLock(name = "updateEventStatusesTask", lockAtLeastFor = "PT30S", lockAtMostFor = "PT50S")
     @Transactional
     public void updateEventStatuses() {
         LOG.info("[CRON JOB] Đang chạy công việc cập nhật trạng thái sự kiện...");

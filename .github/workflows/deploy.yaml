@@ -1,0 +1,81 @@
+name: Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/event-management-docker-repo/be-event-management
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+
+      - name: Docker configuration
+        run: |-
+          gcloud auth configure-docker asia-southeast1-docker.pkg.dev
+
+      - name: Set up GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Build
+        run: |-
+          docker build \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            --tag "$IMAGE:latest" \
+            ./server
+
+      - name: Publish
+        run: |-
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
+
+      - name: Render Deployment YAMLs
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          IMAGE_TAG: ${{ github.sha }}
+          APP_FRONTEND_URL: ${{ secrets.APP_FRONTEND_URL }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |-
+          envsubst < k8s/01-secrets.yaml > k8s/01-secrets-rendered.yaml
+
+          envsubst < k8s/02-backend.yaml > k8s/02-backend-rendered.yaml
+
+      - name: Deploy
+        run: |-
+          kubectl apply -f k8s/00-namespace.yaml
+
+          kubectl apply -f k8s/01-secrets-rendered.yaml
+          kubectl apply -f k8s/02-backend-rendered.yaml
+
+          kubectl apply -f k8s/03-frontend.yaml
+          kubectl apply -f k8s/04-ingress.yaml
+          kubectl apply -f k8s/05-hpa.yaml
+
+          kubectl rollout status deployment/backend-deploy -n event-management-app
+          kubectl get services -o wide -n event-management-app
