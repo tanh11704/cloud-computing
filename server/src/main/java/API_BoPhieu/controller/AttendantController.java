@@ -19,8 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
+import API_BoPhieu.dto.import_job.ImportJobResponse;
 import API_BoPhieu.entity.Attendant;
+import API_BoPhieu.entity.ImportJob;
 import API_BoPhieu.service.attendant.AttendantService;
+import API_BoPhieu.service.import_job.ImportJobService;
 import API_BoPhieu.service.sse.check_in.CheckInSseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +36,7 @@ public class AttendantController {
 
     private final AttendantService attendantService;
     private final CheckInSseService sseService;
+    private final ImportJobService importJobService;
 
     @GetMapping("/subscribe/{eventId}")
     public SseEmitter subscribeToEvents(@PathVariable Integer eventId) {
@@ -55,7 +59,7 @@ public class AttendantController {
     }
 
     @GetMapping("/{eventId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventRole).STAFF)")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).STAFF) or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).MANAGE)")
     public ResponseEntity<List<ParticipantResponse>> getParticipantsByEventId(
             @PathVariable Integer eventId) {
         log.debug("Nhận yêu cầu lấy danh sách người tham gia cho sự kiện ID: {}", eventId);
@@ -64,12 +68,55 @@ public class AttendantController {
     }
 
     @PostMapping(value = "/{eventId}/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventRole).STAFF)")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).STAFF) or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).MANAGE)")
     public ResponseEntity<Map<String, Object>> importParticipants(@PathVariable Integer eventId,
             @RequestParam("file") MultipartFile file, Authentication authentication) {
         log.info("Nhận yêu cầu import người tham gia từ file cho sự kiện ID: {}", eventId);
-        Map<String, Object> response =
-                attendantService.importParticipants(eventId, file, authentication.getName());
+
+        final ImportJob job = importJobService.createImportJob(eventId, authentication.getName(),
+                file.getOriginalFilename());
+
+        // Đọc file content vào memory trước khi async để tránh file bị xóa
+        final byte[] fileContent;
+        try {
+            fileContent = file.getBytes();
+        } catch (final Exception e) {
+            log.error("Lỗi khi đọc file content: ", e);
+            importJobService.updateImportJobError(job.getId(),
+                    "Không thể đọc file: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Không thể đọc file", "jobId", job.getId()));
+        }
+
+        attendantService.importParticipantsAsync(eventId, fileContent, file.getOriginalFilename(),
+                authentication.getName(), job.getId());
+
+        final Map<String, Object> response = Map.of("job_id", job.getId(), "status", "ACCEPTED",
+                "message",
+                "Import đã được chấp nhận và đang xử lý. Vui lòng kiểm tra trạng thái qua endpoint /attendants/import/{jobId}");
+
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
+
+    @GetMapping("/import/{jobId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ImportJobResponse> getImportJobStatus(@PathVariable Integer jobId,
+            Authentication authentication) {
+        log.debug("Nhận yêu cầu lấy trạng thái import job ID: {}", jobId);
+        final ImportJob job = importJobService.getImportJobById(jobId);
+
+        if (!job.getCreatedBy().equals(authentication.getName())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        final ImportJobResponse response = ImportJobResponse.builder().id(job.getId())
+                .eventId(job.getEventId()).createdBy(job.getCreatedBy()).fileName(job.getFileName())
+                .status(job.getStatus()).totalRecords(job.getTotalRecords())
+                .processedCount(job.getProcessedCount()).successCount(job.getSuccessCount())
+                .skippedCount(job.getSkippedCount()).errorMessage(job.getErrorMessage())
+                .resultDetails(job.getResultDetails()).createdAt(job.getCreatedAt())
+                .updatedAt(job.getUpdatedAt()).build();
+
         return ResponseEntity.ok(response);
     }
 
@@ -83,7 +130,7 @@ public class AttendantController {
     }
 
     @GetMapping("/get-qr-check/{eventId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventRole).STAFF)")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).STAFF) or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).MANAGE)")
     public ResponseEntity<byte[]> getQrCheck(@PathVariable Integer eventId) throws Exception {
         log.debug("Nhận yêu cầu tạo QR check-in cho sự kiện ID: {}", eventId);
         byte[] qrCodeImage = attendantService.generateQrCheck(eventId);
@@ -95,7 +142,7 @@ public class AttendantController {
     }
 
     @DeleteMapping("/{eventId}/{userId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventRole).STAFF)")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).MANAGE)")
     public ResponseEntity<Map<String, String>> deleteParticipant(@PathVariable Integer eventId,
             @PathVariable Integer userId, Authentication authentication) {
         log.info("Người dùng '{}' yêu cầu xóa user ID {} khỏi sự kiện ID {}",

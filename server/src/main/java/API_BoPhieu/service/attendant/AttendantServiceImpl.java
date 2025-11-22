@@ -9,12 +9,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import API_BoPhieu.constants.EventManagement;
 import API_BoPhieu.constants.EventStatus;
+import API_BoPhieu.constants.ImportJobStatus;
 import API_BoPhieu.dto.attendant.ParticipantDto;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
 import API_BoPhieu.dto.attendant.ParticipantsDto;
@@ -35,7 +38,9 @@ import API_BoPhieu.repository.UnitRepository;
 import API_BoPhieu.repository.UserRepository;
 import API_BoPhieu.service.email.EmailService;
 import API_BoPhieu.service.file.FileImportService;
+import API_BoPhieu.service.import_job.ImportJobService;
 import API_BoPhieu.service.sse.check_in.CheckInSseService;
+import API_BoPhieu.service.attendant.ByteArrayMultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,6 +59,8 @@ public class AttendantServiceImpl implements AttendantService {
     private final UnitRepository unitRepository;
     private final EmailService emailService;
     private final FileImportService fileImportService;
+    private final ImportJobService importJobService;
+    private final ObjectMapper objectMapper;
 
     @Value("${api.prefix}")
     private String apiPrefix;
@@ -422,6 +429,140 @@ public class AttendantServiceImpl implements AttendantService {
                 notFoundInDbCount, "alreadyJoined", alreadyJoinedCount));
 
         return response;
+    }
+
+    @Override
+    @Async("importTaskExecutor")
+    public void importParticipantsAsync(final Integer eventId, final byte[] fileContent,
+            final String fileName, final String managerEmail, final Integer jobId) {
+        log.info("Starting async import for job ID: {}, event ID: {}, file: {}", jobId, eventId,
+                fileName);
+        try {
+            importJobService.updateImportJobStatus(jobId, ImportJobStatus.PROCESSING);
+
+            final Event event = eventRepository.findById(eventId).orElseThrow(
+                    () -> new NotFoundException("Không tìm thấy sự kiện với ID: " + eventId));
+
+            if (event.getStartTime().isBefore(Instant.now())) {
+                throw new ConflictException(
+                        "Sự kiện đã bắt đầu hoặc kết thúc, không thể thêm người tham gia");
+            }
+            if (event.getStatus() == EventStatus.CANCELLED) {
+                throw new ConflictException("Sự kiện đã bị hủy, không thể thêm người tham gia");
+            }
+
+            // Tạo MultipartFile từ byte array để sử dụng với FileImportService
+            final MultipartFile file = new ByteArrayMultipartFile(fileContent, fileName);
+
+            // Step 1: Extract emails (10% progress)
+            final List<String> extractedEmails = fileImportService.extractEmails(file);
+            final int totalProcessed = extractedEmails.size();
+            importJobService.setTotalRecords(jobId, totalProcessed);
+            importJobService.updateImportJobProgress(jobId, (int) (totalProcessed * 0.1));
+
+            // Step 2: Validate email format (30% progress)
+            final Pattern emailPattern = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+            final List<String> validFormatEmails =
+                    extractedEmails.stream().filter(email -> emailPattern.matcher(email).matches())
+                            .collect(Collectors.toList());
+            final int invalidFormatCount = totalProcessed - validFormatEmails.size();
+            importJobService.updateImportJobProgress(jobId, (int) (totalProcessed * 0.3));
+
+            if (validFormatEmails.isEmpty()) {
+                final Map<String, Object> details = Map.of("invalidFormat", invalidFormatCount,
+                        "notFoundInDb", 0, "alreadyJoined", 0);
+                importJobService.updateImportJobResult(jobId, totalProcessed, 0, totalProcessed,
+                        objectMapper.writeValueAsString(details));
+                importJobService.updateImportJobProgress(jobId, totalProcessed); // 100%
+                return;
+            }
+
+            // Step 3: Find users in database (50% progress)
+            final List<User> users = userRepository.findAllByEmailIn(validFormatEmails);
+            final int notFoundInDbCount = validFormatEmails.size() - users.size();
+            importJobService.updateImportJobProgress(jobId, (int) (totalProcessed * 0.5)); // 50%
+                                                                                           // after
+                                                                                           // finding
+                                                                                           // users
+
+            if (users.isEmpty()) {
+                final Map<String, Object> details = Map.of("invalidFormat", invalidFormatCount,
+                        "notFoundInDb", notFoundInDbCount, "alreadyJoined", 0);
+                importJobService.updateImportJobResult(jobId, totalProcessed, 0, totalProcessed,
+                        objectMapper.writeValueAsString(details));
+                importJobService.updateImportJobProgress(jobId, totalProcessed); // 100%
+                return;
+            }
+
+            // Step 4: Filter existing participants (70% progress)
+            final List<Integer> userIds =
+                    users.stream().map(User::getId).collect(Collectors.toList());
+            final Set<Integer> existingParticipantIds =
+                    attendantRepository.findAllByEventIdAndUserIdIn(eventId, userIds).stream()
+                            .map(Attendant::getUserId).collect(Collectors.toSet());
+
+            final List<User> newParticipants =
+                    users.stream().filter(user -> !existingParticipantIds.contains(user.getId()))
+                            .collect(Collectors.toList());
+
+            final int alreadyJoinedCount = users.size() - newParticipants.size();
+            importJobService.updateImportJobProgress(jobId, (int) (totalProcessed * 0.7)); // 70%
+                                                                                           // after
+                                                                                           // filtering
+
+            final int currentParticipantsCount = attendantRepository.countByEventId(eventId);
+            if (event.getMaxParticipants() != null && currentParticipantsCount
+                    + newParticipants.size() > event.getMaxParticipants()) {
+                throw new ConflictException(
+                        "Số lượng người tham gia (bao gồm import mới) vượt quá giới hạn tối đa của sự kiện");
+            }
+
+            // Step 5: Save attendants (90% progress)
+            final List<Attendant> attendantsToSave = newParticipants.stream().map(user -> {
+                final Attendant attendant = new Attendant();
+                attendant.setEventId(eventId);
+                attendant.setUserId(user.getId());
+                return attendant;
+            }).collect(Collectors.toList());
+
+            attendantRepository.saveAll(attendantsToSave);
+            importJobService.updateImportJobProgress(jobId, (int) (totalProcessed * 0.9)); // 90%
+                                                                                           // after
+                                                                                           // saving
+
+            // Step 6: Send emails (100% progress)
+            int emailSentCount = 0;
+            for (final User participant : newParticipants) {
+                try {
+                    emailService.sendEventJoinNotificationEmail(participant, event);
+                    emailSentCount++;
+                    // Update progress for each email sent
+                    if (emailSentCount % 10 == 0 || emailSentCount == newParticipants.size()) {
+                        final int progress = (int) (totalProcessed * 0.9
+                                + (emailSentCount * totalProcessed * 0.1) / newParticipants.size());
+                        importJobService.updateImportJobProgress(jobId, progress);
+                    }
+                } catch (final Exception e) {
+                    log.error("Lỗi khi gửi email cho user {}: {}", participant.getEmail(),
+                            e.getMessage());
+                }
+            }
+
+            final int successCount = attendantsToSave.size();
+            final int skippedCount = invalidFormatCount + notFoundInDbCount + alreadyJoinedCount;
+
+            final Map<String, Object> details = Map.of("invalidFormat", invalidFormatCount,
+                    "notFoundInDb", notFoundInDbCount, "alreadyJoined", alreadyJoinedCount);
+
+            importJobService.updateImportJobResult(jobId, totalProcessed, successCount,
+                    skippedCount, objectMapper.writeValueAsString(details));
+
+            log.info("Completed async import for job ID: {}, success: {}, skipped: {}", jobId,
+                    successCount, skippedCount);
+        } catch (final Exception e) {
+            log.error("Error processing async import for job ID: {}", jobId, e);
+            importJobService.updateImportJobError(jobId, e.getMessage());
+        }
     }
 
     private ParticipantResponse mapToParticipantResponse(Attendant attendant, User user) {

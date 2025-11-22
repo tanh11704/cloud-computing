@@ -23,6 +23,9 @@ public interface AttendantService {
     Map<String, Object> importParticipants(Integer eventId, MultipartFile file,
             String managerEmail);
 
+    void importParticipantsAsync(Integer eventId, byte[] fileContent, String fileName,
+            String managerEmail, Integer jobId);
+
     void deleteParticipantsByEventIdAndUsersId(Integer eventId, ParticipantsDto participantsDto,
             String removerEmail);
 
