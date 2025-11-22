@@ -53,6 +53,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, "Không có quyền truy cập", ex.getMessage(), req);
     }
 
+    @ExceptionHandler(FileException.class)
+    public ResponseEntity<ErrorResponse> handleFile(FileException ex, HttpServletRequest req) {
+        log.warn("400 {} {} - {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Tệp không hợp lệ", ex.getMessage(), req);
+    }
+
     @ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
     public ResponseEntity<ErrorResponse> handleAccessDenied(RuntimeException ex,
             HttpServletRequest req) {

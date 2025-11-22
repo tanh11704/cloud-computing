@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
 import API_BoPhieu.entity.Attendant;
@@ -59,6 +61,16 @@ public class AttendantController {
         log.debug("Nhận yêu cầu lấy danh sách người tham gia cho sự kiện ID: {}", eventId);
         List<ParticipantResponse> responses = attendantService.getParticipantByEventId(eventId);
         return ResponseEntity.ok(responses);
+    }
+
+    @PostMapping(value = "/{eventId}/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventRole).STAFF)")
+    public ResponseEntity<Map<String, Object>> importParticipants(@PathVariable Integer eventId,
+            @RequestParam("file") MultipartFile file, Authentication authentication) {
+        log.info("Nhận yêu cầu import người tham gia từ file cho sự kiện ID: {}", eventId);
+        Map<String, Object> response =
+                attendantService.importParticipants(eventId, file, authentication.getName());
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/check-in/{eventToken}")

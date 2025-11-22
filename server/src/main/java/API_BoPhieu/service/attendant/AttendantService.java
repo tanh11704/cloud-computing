@@ -1,6 +1,8 @@
 package API_BoPhieu.service.attendant;
 
 import java.util.List;
+import java.util.Map;
+import org.springframework.web.multipart.MultipartFile;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
 import API_BoPhieu.dto.attendant.ParticipantsDto;
 import API_BoPhieu.entity.Attendant;
@@ -17,6 +19,9 @@ public interface AttendantService {
 
     List<ParticipantResponse> addParticipants(Integer eventId, ParticipantsDto participantsDto,
             String adderEmail);
+
+    Map<String, Object> importParticipants(Integer eventId, MultipartFile file,
+            String managerEmail);
 
     void deleteParticipantsByEventIdAndUsersId(Integer eventId, ParticipantsDto participantsDto,
             String removerEmail);

@@ -3,13 +3,16 @@ package API_BoPhieu.service.attendant;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import API_BoPhieu.constants.EventManagement;
 import API_BoPhieu.constants.EventStatus;
 import API_BoPhieu.dto.attendant.ParticipantDto;
@@ -31,6 +34,7 @@ import API_BoPhieu.repository.EventRepository;
 import API_BoPhieu.repository.UnitRepository;
 import API_BoPhieu.repository.UserRepository;
 import API_BoPhieu.service.email.EmailService;
+import API_BoPhieu.service.file.FileImportService;
 import API_BoPhieu.service.sse.check_in.CheckInSseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +53,7 @@ public class AttendantServiceImpl implements AttendantService {
     private final EventManagerRepository eventManagerRepository;
     private final UnitRepository unitRepository;
     private final EmailService emailService;
+    private final FileImportService fileImportService;
 
     @Value("${api.prefix}")
     private String apiPrefix;
@@ -324,6 +329,99 @@ public class AttendantServiceImpl implements AttendantService {
 
         log.info("Người dùng '{}' đã tự hủy đăng ký thành công khỏi sự kiện '{}' (ID: {})",
                 userEmail, event.getTitle(), eventId);
+    }
+
+    @Override
+    public Map<String, Object> importParticipants(Integer eventId, MultipartFile file,
+            String managerEmail) {
+        log.info("Người dùng '{}' yêu cầu import người tham gia từ file '{}' cho sự kiện ID {}",
+                managerEmail, file.getOriginalFilename(), eventId);
+
+        Event event = eventRepository.findById(eventId).orElseThrow(
+                () -> new NotFoundException("Không tìm thấy sự kiện với ID: " + eventId));
+
+        if (event.getStartTime().isBefore(Instant.now())) {
+            throw new ConflictException(
+                    "Sự kiện đã bắt đầu hoặc kết thúc, không thể thêm người tham gia");
+        }
+        if (event.getStatus() == EventStatus.CANCELLED) {
+            throw new ConflictException("Sự kiện đã bị hủy, không thể thêm người tham gia");
+        }
+
+        List<String> extractedEmails = fileImportService.extractEmails(file);
+        int totalProcessed = extractedEmails.size();
+
+        Pattern emailPattern = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+        List<String> validFormatEmails =
+                extractedEmails.stream().filter(email -> emailPattern.matcher(email).matches())
+                        .collect(Collectors.toList());
+        int invalidFormatCount = totalProcessed - validFormatEmails.size();
+
+        if (validFormatEmails.isEmpty()) {
+            return Map.of("message", "Không tìm thấy email hợp lệ nào để xử lý.", "total",
+                    totalProcessed, "success", 0, "skipped", totalProcessed);
+        }
+
+        List<User> users = userRepository.findAllByEmailIn(validFormatEmails);
+        int notFoundInDbCount = validFormatEmails.size() - users.size();
+
+        if (users.isEmpty()) {
+            return Map.of("message", "Không có email nào tồn tại trong hệ thống.", "total",
+                    totalProcessed, "success", 0, "skipped", totalProcessed);
+        }
+
+        List<Integer> userIds = users.stream().map(User::getId).collect(Collectors.toList());
+        Set<Integer> existingParticipantIds =
+                attendantRepository.findAllByEventIdAndUserIdIn(eventId, userIds).stream()
+                        .map(Attendant::getUserId).collect(Collectors.toSet());
+
+        List<User> newParticipants =
+                users.stream().filter(user -> !existingParticipantIds.contains(user.getId()))
+                        .collect(Collectors.toList());
+
+        int alreadyJoinedCount = users.size() - newParticipants.size();
+
+        int currentParticipantsCount = attendantRepository.countByEventId(eventId);
+        if (event.getMaxParticipants() != null
+                && currentParticipantsCount + newParticipants.size() > event.getMaxParticipants()) {
+            throw new ConflictException(
+                    "Số lượng người tham gia (bao gồm import mới) vượt quá giới hạn tối đa của sự kiện");
+        }
+
+        List<Attendant> attendantsToSave = newParticipants.stream().map(user -> {
+            Attendant attendant = new Attendant();
+            attendant.setEventId(eventId);
+            attendant.setUserId(user.getId());
+            return attendant;
+        }).collect(Collectors.toList());
+
+        attendantRepository.saveAll(attendantsToSave);
+
+        for (User participant : newParticipants) {
+            try {
+                emailService.sendEventJoinNotificationEmail(participant, event);
+            } catch (Exception e) {
+                log.error("Lỗi khi gửi email cho user {}: {}", participant.getEmail(),
+                        e.getMessage());
+            }
+        }
+
+        int successCount = attendantsToSave.size();
+        int skippedCount = invalidFormatCount + notFoundInDbCount + alreadyJoinedCount;
+
+        String message = String.format(
+                "Đã gửi mời thành công %d email. Bỏ qua %d email không hợp lệ hoặc đã tồn tại.",
+                successCount, skippedCount);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", message);
+        response.put("total", totalProcessed);
+        response.put("success", successCount);
+        response.put("skipped", skippedCount);
+        response.put("details", Map.of("invalidFormat", invalidFormatCount, "notFoundInDb",
+                notFoundInDbCount, "alreadyJoined", alreadyJoinedCount));
+
+        return response;
     }
 
     private ParticipantResponse mapToParticipantResponse(Attendant attendant, User user) {
