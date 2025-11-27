@@ -30,4 +30,14 @@ public interface AttendantService {
             String removerEmail);
 
     void cancelMyRegistration(Integer eventId, String userEmail);
+
+    /**
+     * Exports participants to Excel file with optional filtering.
+     *
+     * @param eventId Event ID to export participants from
+     * @param filter Filter type: "all" for all participants, "checked-in" for checked-in only
+     * @return Byte array representing the Excel file (.xlsx format)
+     * @throws Exception if export fails
+     */
+    byte[] exportParticipantsToExcel(Integer eventId, String filter) throws Exception;
 }

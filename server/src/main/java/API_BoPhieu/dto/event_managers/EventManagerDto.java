@@ -22,5 +22,4 @@ public class EventManagerDto {
 
     @JsonProperty("assigned_by")
     private Integer assignedby;
-
 }

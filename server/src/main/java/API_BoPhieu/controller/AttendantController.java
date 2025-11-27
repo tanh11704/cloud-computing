@@ -161,4 +161,29 @@ public class AttendantController {
         attendantService.cancelMyRegistration(eventId, authentication.getName());
         return ResponseEntity.ok(Map.of("message", "Hủy đăng ký thành công."));
     }
+
+    @GetMapping("/{eventId}/export")
+    @PreAuthorize("hasRole('ROLE_ADMIN') or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).STAFF) or @eventAuth.hasEventRole(authentication, #eventId, T(API_BoPhieu.constants.EventManagement).MANAGE)")
+    public ResponseEntity<byte[]> exportParticipantsToExcel(@PathVariable Integer eventId,
+            @RequestParam(value = "filter", defaultValue = "all") String filter) throws Exception {
+        log.info(
+                "Nhận yêu cầu xuất danh sách người tham dự ra Excel cho sự kiện ID: {}, filter: {}",
+                eventId, filter);
+
+        final byte[] excelBytes = attendantService.exportParticipantsToExcel(eventId, filter);
+
+        // Generate filename with event ID and timestamp
+        final String filename = String.format("Danh_sach_nguoi_tham_du_%d_%d.xlsx", eventId,
+                System.currentTimeMillis());
+
+        final HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDispositionFormData("attachment", filename);
+        headers.setContentLength(excelBytes.length);
+
+        log.info("Đã xuất thành công file Excel cho sự kiện ID: {}, kích thước: {} bytes", eventId,
+                excelBytes.length);
+        return new ResponseEntity<>(excelBytes, headers, HttpStatus.OK);
+    }
 }

@@ -37,10 +37,10 @@ import API_BoPhieu.repository.EventRepository;
 import API_BoPhieu.repository.UnitRepository;
 import API_BoPhieu.repository.UserRepository;
 import API_BoPhieu.service.email.EmailService;
+import API_BoPhieu.service.file.FileExportService;
 import API_BoPhieu.service.file.FileImportService;
 import API_BoPhieu.service.import_job.ImportJobService;
 import API_BoPhieu.service.sse.check_in.CheckInSseService;
-import API_BoPhieu.service.attendant.ByteArrayMultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -59,6 +59,7 @@ public class AttendantServiceImpl implements AttendantService {
     private final UnitRepository unitRepository;
     private final EmailService emailService;
     private final FileImportService fileImportService;
+    private final FileExportService fileExportService;
     private final ImportJobService importJobService;
     private final ObjectMapper objectMapper;
 
@@ -590,6 +591,79 @@ public class AttendantServiceImpl implements AttendantService {
         return ParticipantResponse.builder().id(attendant.getId()).eventId(attendant.getEventId())
                 .joinedAt(attendant.getJoinedAt()).checkInTime(attendant.getCheckedTime())
                 .user(userResponse).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportParticipantsToExcel(final Integer eventId, final String filter)
+            throws Exception {
+        log.info("Bắt đầu xuất danh sách người tham dự ra Excel cho sự kiện ID: {}, filter: {}",
+                eventId, filter);
+
+        // Get event to retrieve title
+        final Event event = eventRepository.findById(eventId).orElseThrow(
+                () -> new NotFoundException("Không tìm thấy sự kiện với ID: " + eventId));
+
+        // Get participants based on filter
+        final List<ParticipantResponse> participants;
+        if ("checked-in".equalsIgnoreCase(filter)) {
+            // Get only checked-in participants
+            final List<Attendant> checkedInAttendants = attendantRepository
+                    .findByEventIdAndCheckedTimeIsNotNullOrderByCheckedTimeAsc(eventId);
+            participants = mapAttendantsToParticipantResponses(checkedInAttendants);
+        } else {
+            // Get all participants (default)
+            participants = getParticipantByEventId(eventId);
+        }
+
+        if (participants.isEmpty()) {
+            log.warn("Không có người tham dự nào để xuất cho sự kiện ID: {}", eventId);
+            throw new NotFoundException("Không có người tham dự nào để xuất");
+        }
+
+        // Export to Excel
+        final byte[] excelBytes =
+                fileExportService.exportParticipantsToExcel(participants, event.getTitle());
+
+        log.info("Đã xuất thành công {} người tham dự ra Excel cho sự kiện ID: {}",
+                participants.size(), eventId);
+        return excelBytes;
+    }
+
+    /**
+     * Maps a list of Attendants to ParticipantResponse list. Follows DRY principle by reusing
+     * mapping logic.
+     */
+    private List<ParticipantResponse> mapAttendantsToParticipantResponses(
+            final List<Attendant> attendants) {
+        if (attendants.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        final Set<Integer> userIds =
+                attendants.stream().map(Attendant::getUserId).collect(Collectors.toSet());
+
+        final Map<Integer, User> userMap = userRepository.findAllById(new ArrayList<>(userIds))
+                .stream().collect(Collectors.toMap(User::getId, user -> user));
+
+        final Set<Integer> unitIds = userMap.values().stream().map(User::getUnitId)
+                .filter(id -> id != null).collect(Collectors.toSet());
+
+        final Map<Integer, Unit> unitMap = unitIds.isEmpty() ? Collections.emptyMap()
+                : unitRepository.findAllById(new ArrayList<>(unitIds)).stream()
+                        .collect(Collectors.toMap(Unit::getId, unit -> unit));
+
+        final Map<Integer, Unit> finalUnitMap = unitMap;
+
+        return attendants.stream().map(attendant -> {
+            final User user = userMap.get(attendant.getUserId());
+            if (user == null) {
+                return null;
+            }
+            final Unit unit =
+                    (user.getUnitId() != null) ? finalUnitMap.get(user.getUnitId()) : null;
+            return mapToParticipantResponse(attendant, user, unit);
+        }).filter(response -> response != null).collect(Collectors.toList());
     }
 
     private EventStatus getDisplayStatus(Event event) {

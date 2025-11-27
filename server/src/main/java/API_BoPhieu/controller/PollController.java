@@ -76,7 +76,7 @@ public class PollController {
         return ResponseEntity.ok(Map.of("optionIds", optionIds));
     }
 
-    @GetMapping("/{eventId}/stats")
+    @GetMapping("/events/{eventId}/stats")
     public ResponseEntity<List<PollStatsResponse>> getPollStatsByEvent(
             @PathVariable Integer eventId) {
         List<PollStatsResponse> pollStatsResponses = pollService.getPollStatsByEvent(eventId);

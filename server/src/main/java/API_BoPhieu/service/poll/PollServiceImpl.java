@@ -20,6 +20,7 @@ import API_BoPhieu.entity.Poll;
 import API_BoPhieu.entity.User;
 import API_BoPhieu.entity.Vote;
 import API_BoPhieu.exception.AuthException;
+import API_BoPhieu.exception.ConflictException;
 import API_BoPhieu.exception.EventException;
 import API_BoPhieu.exception.PollException;
 import API_BoPhieu.mapper.PollMapper;
@@ -51,6 +52,12 @@ public class PollServiceImpl implements PollService {
 
         Event event = eventRepository.findById(pollDTO.getEventId()).orElseThrow(
                 () -> new EventException("Không tìm thấy sự kiện với ID: " + pollDTO.getEventId()));
+
+        // Validate thời gian
+        if (pollDTO.getEndTime() != null && pollDTO.getStartTime() != null
+                && !pollDTO.getEndTime().isAfter(pollDTO.getStartTime())) {
+            throw new ConflictException("Thời gian kết thúc phải sau thời gian bắt đầu");
+        }
 
         Poll poll = new Poll();
         poll.setEventId(event.getId());
@@ -223,6 +230,12 @@ public class PollServiceImpl implements PollService {
     public PollResponse updatePoll(UpdatePollDTO pollDto, Integer pollId) {
         Poll poll = pollRepository.findById(pollId)
                 .orElseThrow(() -> new EventException("Không tìm thấy poll với ID: " + pollId));
+
+        // Validate thời gian
+        if (pollDto.getEndTime() != null && pollDto.getStartTime() != null
+                && !pollDto.getEndTime().isAfter(pollDto.getStartTime())) {
+            throw new ConflictException("Thời gian kết thúc phải sau thời gian bắt đầu");
+        }
 
         poll.setTitle(pollDto.getTitle());
         poll.setPollType(pollDto.getPollType());
