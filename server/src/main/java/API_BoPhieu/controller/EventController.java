@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import API_BoPhieu.constants.EventStatus;
+import API_BoPhieu.dto.ai.GenerateDescriptionRequest;
+import API_BoPhieu.dto.ai.GenerateDescriptionResponse;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
 import API_BoPhieu.dto.attendant.ParticipantsDto;
 import API_BoPhieu.dto.event.EventDetailResponse;
@@ -28,9 +30,11 @@ import API_BoPhieu.dto.event.EventPageWithCountersResponse;
 import API_BoPhieu.dto.event.EventResponse;
 import API_BoPhieu.entity.Attendant;
 import API_BoPhieu.exception.AuthException;
+import API_BoPhieu.service.ai.AiContentService;
 import API_BoPhieu.service.attendant.AttendantService;
 import API_BoPhieu.service.event.EventService;
 import API_BoPhieu.service.sse.event_list.EventListSseService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +46,7 @@ public class EventController {
     private final EventService eventService;
     private final AttendantService attendantService;
     private final EventListSseService eventListSseService;
+    private final AiContentService aiContentService;
 
     @PutMapping("/{id}/upload-banner")
     public ResponseEntity<?> uploadBanner(@PathVariable("id") Integer eventId,
@@ -163,5 +168,20 @@ public class EventController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Integer id) {
         eventService.cancelEvent(id);
+    }
+
+    @PostMapping("/generate-description")
+    public ResponseEntity<?> generateDescription(
+            @Valid @RequestBody GenerateDescriptionRequest request) {
+        try {
+            log.info("Nhận yêu cầu tạo mô tả sự kiện bằng AI cho: {}", request.getTitle());
+            GenerateDescriptionResponse response =
+                    aiContentService.generateEventDescription(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Lỗi khi tạo mô tả sự kiện bằng AI: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", e.getMessage()));
+        }
     }
 }
