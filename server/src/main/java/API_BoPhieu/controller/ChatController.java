@@ -37,7 +37,7 @@ public class ChatController {
             @AuthenticationPrincipal UserDetails userDetails, @RequestBody ChatRequest request) {
 
         User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("không tìm thấy người dùng"));
 
         return ResponseEntity.ok(chatService.processMessage(user.getId(), request));
     }
@@ -49,7 +49,7 @@ public class ChatController {
             @AuthenticationPrincipal UserDetails userDetails, @PathVariable Integer eventId) {
 
         User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("không tìm thấy người dùng"));
 
         return ResponseEntity.ok(chatService.getChatHistory(user.getId(), eventId));
     }

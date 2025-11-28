@@ -1,9 +1,13 @@
 
 package API_BoPhieu.controller;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,7 +16,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import API_BoPhieu.constants.ExportFormat;
 import API_BoPhieu.dto.poll.PollDTO;
 import API_BoPhieu.dto.poll.PollResponse;
 import API_BoPhieu.dto.poll.PollStatsResponse;
@@ -21,6 +27,7 @@ import API_BoPhieu.dto.poll.VoteDTO;
 import API_BoPhieu.entity.User;
 import API_BoPhieu.exception.AuthException;
 import API_BoPhieu.repository.UserRepository;
+import API_BoPhieu.service.poll.PollExportService;
 import API_BoPhieu.service.poll.PollService;
 
 @RestController
@@ -29,6 +36,9 @@ public class PollController {
 
     @Autowired
     private PollService pollService;
+
+    @Autowired
+    private PollExportService pollExportService;
 
     @Autowired
     private UserRepository userRepository;
@@ -95,6 +105,32 @@ public class PollController {
         PollResponse poll = pollService.updatePoll(updatePollDTO, pollId);
 
         return ResponseEntity.ok(poll);
+    }
+
+    @GetMapping("/{pollId}/export")
+    public ResponseEntity<?> exportPollStats(@PathVariable Integer pollId,
+            @RequestParam(defaultValue = "EXCEL") ExportFormat format) {
+        try {
+            final byte[] fileBytes = pollExportService.exportPollStats(pollId, format);
+
+            final HttpHeaders headers = new HttpHeaders();
+            final String contentType =
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            final String fileExtension = ".xlsx";
+            final String filename = "poll_results_" + pollId + fileExtension;
+
+            headers.setContentType(MediaType.parseMediaType(contentType));
+            headers.setContentDispositionFormData("attachment", filename);
+            headers.setContentLength(fileBytes.length);
+
+            return new ResponseEntity<>(fileBytes, headers, HttpStatus.OK);
+        } catch (final IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Lỗi khi xuất file: " + e.getMessage()));
+        } catch (final Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
     }
 
 }

@@ -17,6 +17,8 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import API_BoPhieu.dto.attendant.ParticipantResponse;
+import API_BoPhieu.dto.poll.OptionStatsWithEmailsResponse;
+import API_BoPhieu.dto.poll.PollStatsWithEmailsResponse;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -166,7 +168,114 @@ public class FileExportServiceImpl implements FileExportService {
         final int numberOfColumns = 4; // Name, Email, Status, Check-in Time
         for (int i = 0; i < numberOfColumns; i++) {
             sheet.autoSizeColumn(i);
-            // Add some padding
+            sheet.setColumnWidth(i, sheet.getColumnWidth(i) + 1000);
+        }
+    }
+
+    @Override
+    public byte[] exportPollStatsToExcel(final PollStatsWithEmailsResponse pollStats,
+            final String eventTitle) throws IOException {
+        log.debug("Bắt đầu xuất kết quả poll '{}' ra file Excel cho sự kiện: {}",
+                pollStats.getTitle(), eventTitle);
+
+        try (final Workbook workbook = new XSSFWorkbook();
+                final ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+            final Sheet sheet = workbook.createSheet("Kết quả thăm dò");
+
+            // Create styles
+            final CellStyle headerStyle = createHeaderStyle(workbook);
+            final CellStyle dataStyle = createDataStyle(workbook);
+            final CellStyle titleStyle = createTitleStyle(workbook);
+            final CellStyle numberStyle = createNumberStyle(workbook);
+
+            int rowNum = 0;
+
+            // Event title
+            createCell(sheet.createRow(rowNum++), 0, "Sự kiện: " + eventTitle, titleStyle);
+            sheet.createRow(rowNum++); // Empty row
+
+            // Poll title
+            createCell(sheet.createRow(rowNum++), 0, "Câu hỏi: " + pollStats.getTitle(),
+                    titleStyle);
+            sheet.createRow(rowNum++); // Empty row
+
+            // Summary info
+            final Row summaryRow = sheet.createRow(rowNum++);
+            createCell(summaryRow, 0, "Tổng số lượt bình chọn: " + pollStats.getTotalVotes(),
+                    dataStyle);
+            final Row votersRow = sheet.createRow(rowNum++);
+            createCell(votersRow, 0, "Tổng số người bình chọn: " + pollStats.getTotalVoters(),
+                    dataStyle);
+            sheet.createRow(rowNum++); // Empty row
+
+            // Table header
+            final Row headerRow = sheet.createRow(rowNum++);
+            createCell(headerRow, 0, "Lựa chọn", headerStyle);
+            createCell(headerRow, 1, "Số lượt bình chọn", headerStyle);
+            createCell(headerRow, 2, "Tỷ lệ (%)", headerStyle);
+            createCell(headerRow, 3, "Email người bình chọn", headerStyle);
+
+            // Table data
+            if (pollStats.getOptions() != null) {
+                for (final OptionStatsWithEmailsResponse option : pollStats.getOptions()) {
+                    final Row dataRow = sheet.createRow(rowNum++);
+                    createCell(dataRow, 0, option.getContent(), dataStyle);
+                    createCell(dataRow, 1, String.valueOf(option.getVoteCount()), numberStyle);
+                    final String percentage = String.format("%.2f", option.getPercentage());
+                    createCell(dataRow, 2, percentage + "%", numberStyle);
+                    // Email addresses (comma-separated)
+                    final String emails = option.getVoterEmails() != null
+                            ? String.join(", ", option.getVoterEmails())
+                            : "";
+                    createCell(dataRow, 3, emails, dataStyle);
+                }
+            }
+
+            // Auto-size columns
+            autoSizePollColumns(sheet);
+
+            // Write to byte array
+            workbook.write(outputStream);
+            final byte[] excelBytes = outputStream.toByteArray();
+
+            log.info("Đã xuất thành công kết quả poll '{}' ra file Excel ({} bytes)",
+                    pollStats.getTitle(), excelBytes.length);
+            return excelBytes;
+        } catch (final IOException e) {
+            log.error("Lỗi khi xuất kết quả poll ra file Excel: ", e);
+            throw new IOException("Không thể tạo file Excel: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Creates title style with larger, bold font.
+     */
+    private CellStyle createTitleStyle(final Workbook workbook) {
+        final CellStyle style = workbook.createCellStyle();
+        final Font font = workbook.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 14);
+        style.setFont(font);
+        return style;
+    }
+
+    /**
+     * Creates number style with right alignment.
+     */
+    private CellStyle createNumberStyle(final Workbook workbook) {
+        final CellStyle style = workbook.createCellStyle();
+        style.setAlignment(HorizontalAlignment.RIGHT);
+        return style;
+    }
+
+    /**
+     * Auto-sizes columns for poll export sheet.
+     */
+    private void autoSizePollColumns(final Sheet sheet) {
+        final int numberOfColumns = 4; // Option, Vote Count, Percentage, Emails
+        for (int i = 0; i < numberOfColumns; i++) {
+            sheet.autoSizeColumn(i);
             sheet.setColumnWidth(i, sheet.getColumnWidth(i) + 1000);
         }
     }
