@@ -37,7 +37,6 @@ public class UnitController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UnitResponseDTO>> getAllUnits() {
         log.info("ADMIN request: Lấy danh sách tất cả các đơn vị.");
         return ResponseEntity.ok(unitService.getAllUnits());

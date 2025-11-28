@@ -282,6 +282,9 @@ public class EventServiceImpl implements EventService {
         boolean isUserRegistered =
                 attendants.stream().anyMatch(a -> a.getUserId().equals(currentUser.getId()));
 
+        boolean isUserCheckedIn = attendants.stream().anyMatch(
+                a -> a.getUserId().equals(currentUser.getId()) && a.getCheckedTime() != null);
+
         List<ParticipantInfo> participants = attendants.stream().map(
                 attendant -> mapToParticipantInfo(attendant, userMap.get(attendant.getUserId())))
                 .collect(Collectors.toList());
@@ -296,8 +299,8 @@ public class EventServiceImpl implements EventService {
                         .map(secretary -> mapToSecretaryInfo(userMap.get(secretary.getUserId())))
                         .collect(Collectors.toList());
 
-        return eventMapper.toEventDetailResponse(event, isUserRegistered, participants,
-                managerInfos, secretaryInfos);
+        return eventMapper.toEventDetailResponse(event, isUserRegistered, isUserCheckedIn,
+                participants, managerInfos, secretaryInfos);
     }
 
     @Override

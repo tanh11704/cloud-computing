@@ -2,7 +2,6 @@ package API_BoPhieu.dto.event;
 
 import java.time.Instant;
 import java.util.List;
-
 import API_BoPhieu.constants.EventStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,6 +29,7 @@ public class EventDetailResponse {
     private Instant updatedAt;
 
     private Boolean isUserRegistered;
+    private Boolean isUserCheckedIn;
     private List<ParticipantInfo> participants;
     private List<ManagerInfo> manager;
     private List<SecretaryInfo> secretaries;
